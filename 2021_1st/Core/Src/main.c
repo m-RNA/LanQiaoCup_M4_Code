@@ -329,7 +329,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	HAL_UART_Receive_IT(&huart1, &Uart_Rx_Buffer, 1);
 }
 
-time_t Command_Chick(u8 * command)
+time_t Command_Check(u8 * command)
 {
 	u8 i;
 	struct tm info ={0};
@@ -384,7 +384,7 @@ void UART_Proc(void)
 		if(uwTick - UART_Timer_Tick < 100) return;
 		if(Uart_Rx_Pointer != 22) goto SEND_ERROR;
 		
-		Data_Temp.sec = Command_Chick(Uart_Rx);
+		Data_Temp.sec = Command_Check(Uart_Rx);
 		if(Data_Temp.sec == 0) goto SEND_ERROR;
 		
 		if(memcmp(CNBR_String, Uart_Rx, 4) == 0)
