@@ -27,11 +27,12 @@
 /* USER CODE BEGIN Includes */
 #include "bsp_led_key.h"
 #include "lcd.h"
-#include "stdbool.h"
-#include "stdio.h"
-#include "string.h"
-#include "ctype.h"
-#include "time.h"
+
+#include "stdbool.h" // bool数据类型
+#include "stdio.h"   // 标准输入输出库
+#include "string.h"  // 字符串相关标准库
+#include "ctype.h"   // 判断 ASCII码 是否为 "数字"
+#include "time.h"    // 计算时间相关标准库
 
 
 /* USER CODE END Includes */
@@ -53,33 +54,50 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+// 软件定时器Tick （MutilTimer 简易版）
 __IO u32 KEY_Timer_Tick = 0;
 __IO u32 LED_Timer_Tick = 0;
 __IO u32 LCD_Timer_Tick = 0;
 __IO u32 UART_Timer_Tick = 0;
 
 
-
-
-
+// 外设相关变量
 u8 ucLED = 0x01;
+
 u8 KEY_Val, KEY_Down, KEY_Old = 0;
+
 u8 LCD_String_Buffer[21] = {0};
+
 u8 Uart_Rx_Pointer = 0;
 u8 Uart_Rx_Buffer = 0;
 u8 Uart_Rx[150] = {0};
-u8 Uart_Tx_Buffer[50] = {0};
 
+u8 Uart_Tx_Buffer[150] = {0};
+
+
+//题目算法相关变量
 bool Menu_State = 0;
 bool PWM_Ctrl = 0;
 
-u8 No_Use_Num = 8;
-u8 CNBR_Use_Num = 0;
-u8 VNBR_Use_Num = 0;
-u16 CNBR_Fee_X10 = 35;
-u16 VNBR_Fee_X10 = 20;
+typedef struct
+{
+	u8 type;    // 车的类型 'C' / 'V'
+	u8 id[5];   // 车的编号 (多余一位存放 0 即'\0',方便打印id)
+	time_t sec; // 入车库时刻
+} Data_Type;
 
+Data_Type Data[8] = {0}; // 车位数据
+u8 NBR_State = 0;        // 车位是否占用 1-占用 0-空闲
 
+u8 No_Use_Num = 8;   // 空闲车位
+u8 CNBR_Use_Num = 0; // C类占用车位数 
+u8 VNBR_Use_Num = 0; // V类占用车位数
+
+u16 CNBR_Fee_X10 = 35; // C类停车费用
+u16 VNBR_Fee_X10 = 20; // V类停车费用
+
+char *CNBR_String = "CNBR"; // 方便打印等
+char *VNBR_String = "VNBR"; // 方便打印等
 
 
 /* USER CODE END PV */
@@ -96,7 +114,6 @@ void KEY_Proc(void);
 void LED_Proc(void);
 void LCD_Proc(void);
 void UART_Proc(void);
-
 
 
 /* USER CODE END 0 */
@@ -146,6 +163,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 	HAL_TIM_PWM_Start(&htim17, TIM_CHANNEL_1);
 	HAL_UART_Receive_IT(&huart1, &Uart_Rx_Buffer, 1);
+	
   while (1)
   {
     /* USER CODE END WHILE */
@@ -155,7 +173,7 @@ int main(void)
 		LED_Proc();
 		LCD_Proc();
 		UART_Proc();
-		
+
 		
   }
   /* USER CODE END 3 */
@@ -216,7 +234,6 @@ void SystemClock_Config(void)
 /* USER CODE BEGIN 4 */
 void KEY_Proc(void)
 {
-	
 	if(uwTick - KEY_Timer_Tick < 50) return;
 	KEY_Timer_Tick = uwTick;
 	
@@ -251,6 +268,7 @@ void KEY_Proc(void)
 				}
 			}
 			break;
+
 		case 4:
 			PWM_Ctrl ^= 1;
 			if(PWM_Ctrl)
@@ -263,15 +281,9 @@ void KEY_Proc(void)
 				__HAL_TIM_SetCompare(&htim17, TIM_CHANNEL_1, 0);
 				ucLED &= ~0x02;
 			}
-		
 			break;		
 	}
 }
-
-
-
-
-
 
 void LED_Proc(void)
 {
@@ -289,7 +301,6 @@ void LED_Proc(void)
 	
 	LED_Disp(ucLED);
 }
-
  
 void LCD_Proc(void)
 {
@@ -329,55 +340,50 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	HAL_UART_Receive_IT(&huart1, &Uart_Rx_Buffer, 1);
 }
 
+// 检查命令格式函数
+// 若命令格式正确，则将对应日期以1970-1-1 00:00:00为起点转换为秒
+// 若命令格式错误，则返回0
 time_t Command_Check(u8 * command)
 {
 	u8 i;
-	struct tm info ={0};
+	struct tm info ={0}; // "time.h" 标准库 结构体
+	
 	if(command[4] == ':' && command[9] == ':')
 	{
 		for(i = 10; i < 22; i++)
 		{
-			if(isdigit(command[i]))
+			if(isdigit(command[i])) // 调用"ctype.h"标准库 判断 ASCII码 是否为 "数字"
 				command[i] -= '0';
 			else
 				return 0;
 		}
 		
-		info.tm_year = command[10] * 10 + command[11] + 2000 - 1900; //2000~ 2099
-		info.tm_mon  = command[12] * 10 + command[13] - 1;
+		// 将时间转换为tm结构体格式
+		info.tm_year = command[10] * 10 + command[11] + 2000 - 1900; /* years since 1900 */
+		info.tm_mon  = command[12] * 10 + command[13] - 1; /* months since January, 0 to 11 */
 		info.tm_mday = command[14] * 10 + command[15]; 
 		info.tm_hour = command[16] * 10 + command[17]; 
 		info.tm_min  = command[18] * 10 + command[19]; 
 		info.tm_sec  = command[20] * 10 + command[21];
 		
-		if(info.tm_mon < 12 && (info.tm_mday > 0 && info.tm_mday < 32) && info.tm_hour < 24 && info.tm_min < 60 && info.tm_sec < 60)
+		if(info.tm_mon  < 12 && (info.tm_mday > 0  && info.tm_mday < 32) && \
+			 info.tm_hour < 24 &&  info.tm_min  < 60 && info.tm_sec  < 60)
 		{
-			return mktime(&info);
+			//调用"time.h" 标准库，将日期以1970-1-1 00:00:00为起点转换为秒
+			return mktime(&info);  
 		}
 	}
 	return 0;
 }
 
 
-typedef struct
-{
-	u8 type; // 'C'  'V'
-	u8 id[5];
-	time_t sec;
-} Data_Type;
-
-Data_Type Data[8] = {0};
-u8 NBR_State = 0;
-
-char * CNBR_String = "CNBR";
-char * VNBR_String = "VNBR";
 
 void UART_Proc(void)
 {
-	u8 Postion;
-	Data_Type Data_Temp = {0};
-	__IO bool dir = 1;  // 1-In  0-Out
-	time_t dt_hour = 0;
+	u8 Postion; // 车库位置
+	time_t dt_hour = 0; // 存放时间差
+	__IO bool dir = 1;  // 出入车库方向 1-In  0-Out
+	Data_Type Data_Temp = {0}; //存放临时数据
 	
 	if(Uart_Rx_Pointer)
 	{
@@ -387,6 +393,7 @@ void UART_Proc(void)
 		Data_Temp.sec = Command_Check(Uart_Rx);
 		if(Data_Temp.sec == 0) goto SEND_ERROR;
 		
+		// 检查车的类型是否正确
 		if(memcmp(CNBR_String, Uart_Rx, 4) == 0)
 			Data_Temp.type = 'C';
 		else if(memcmp(VNBR_String, Uart_Rx, 4) == 0)
@@ -394,16 +401,18 @@ void UART_Proc(void)
 		else
 		 goto SEND_ERROR;	
 		
+		// 拷贝id，方便后续判断与入车库等操作
 		memcpy(Data_Temp.id, &Uart_Rx[5], 4);
 		
-		//....right
+		//....right 命令格式正确
+		// 判断是入车库还是出车库 以及找出对应车位
 		for(Postion = 0; Postion < 8; Postion++)
 		{
 			if(NBR_State & (1 << Postion))
 			{
 				if(memcmp(Data_Temp.id, Data[Postion].id, 4) == 0)
 				{
-					dir = 0;
+					dir = 0; // Out-出车库
 					break;
 				}
 			}
@@ -415,17 +424,18 @@ void UART_Proc(void)
 			{
 				if((NBR_State & (1 << Postion)) == 0)
 				{
-					dir = 1;
+					dir = 1; // In-入车库
 					break;
 				}
 			}
 		}
 		
-		// 有车位
+		//....有车位
 		if(dir) // 1-In
 		{
-			NBR_State |= 1 << Postion;
 			Data[Postion] = Data_Temp;
+			
+			NBR_State |= 1 << Postion;
 			
 			No_Use_Num--;
 			if(Data[Postion].type == 'C')
@@ -435,11 +445,13 @@ void UART_Proc(void)
 		}
 		else // 0-Out
 		{
-			if(Data[Postion].type != Data_Temp.type) goto SEND_ERROR;
-			if(Data[Postion].sec >= Data_Temp.sec) goto SEND_ERROR;
+			if(Data[Postion].type != Data_Temp.type) goto SEND_ERROR; // id一样，看出入车库前后的type(车型)是否一致
+			if(Data[Postion].sec >= Data_Temp.sec) goto SEND_ERROR;   // 入车库时间 比 出车库时间 早
 
-			dt_hour =  (Data_Temp.sec - Data[Postion].sec) /3600.0f + 1;
+			dt_hour =  (Data_Temp.sec - Data[Postion].sec) /3600.0f + 1; // 不满一小时按一小时算
+			
 			NBR_State &= ~(1 << Postion);
+			
 			No_Use_Num++;
 			if(Data[Postion].type == 'C')
 			{
@@ -464,8 +476,6 @@ void UART_Proc(void)
 		Uart_Rx_Pointer = 0;
 	}
 }
-
-
 
 /* USER CODE END 4 */
 
