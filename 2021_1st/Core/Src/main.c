@@ -234,7 +234,7 @@ void SystemClock_Config(void)
 /* USER CODE BEGIN 4 */
 void KEY_Proc(void)
 {
-	if(uwTick - KEY_Timer_Tick < 50) return;
+	if(uwTick < KEY_Timer_Tick + 50) return;
 	KEY_Timer_Tick = uwTick;
 	
 	KEY_Val = KEY_Scan();
@@ -287,7 +287,7 @@ void KEY_Proc(void)
 
 void LED_Proc(void)
 {
-	if(uwTick - LED_Timer_Tick < 150) return;
+	if(uwTick < LED_Timer_Tick + 150) return;
 	LED_Timer_Tick = uwTick;
 	
 	if(No_Use_Num)
@@ -304,7 +304,7 @@ void LED_Proc(void)
  
 void LCD_Proc(void)
 {
-	if(uwTick - LCD_Timer_Tick < 100) return;
+	if(uwTick < LCD_Timer_Tick + 100) return;
 	LCD_Timer_Tick = uwTick;
 	
 	if(Menu_State == 0)
@@ -387,7 +387,7 @@ void UART_Proc(void)
 	
 	if(Uart_Rx_Pointer)
 	{
-		if(uwTick - UART_Timer_Tick < 100) return;
+		if(uwTick < UART_Timer_Tick + 100) return;
 		if(Uart_Rx_Pointer != 22) goto SEND_ERROR;
 		
 		Data_Temp.sec = Command_Check(Uart_Rx);
