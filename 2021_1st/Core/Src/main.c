@@ -39,6 +39,13 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+typedef struct
+{
+	u8 state;   // 车位是否占用 1-占用 0-空闲
+	u8 type;    // 车的类型 'C' / 'V'
+	u8 id[5];   // 车的编号 (多余一位存放 0 即'\0',方便打印id)
+	time_t sec; // 入车库时刻
+} Data_Type;
 
 /* USER CODE END PTD */
 
@@ -79,15 +86,7 @@ u8 Uart_Tx_Buffer[150] = {0};
 bool Menu_State = 0;
 bool PWM_Ctrl = 0;
 
-typedef struct
-{
-	u8 type;    // 车的类型 'C' / 'V'
-	u8 id[5];   // 车的编号 (多余一位存放 0 即'\0',方便打印id)
-	time_t sec; // 入车库时刻
-} Data_Type;
-
 Data_Type Data[8] = {0}; // 车位数据
-u8 NBR_State = 0;        // 车位是否占用 1-占用 0-空闲
 
 u8 No_Use_Num = 8;   // 空闲车位
 u8 CNBR_Use_Num = 0; // C类占用车位数 
@@ -234,8 +233,8 @@ void SystemClock_Config(void)
 /* USER CODE BEGIN 4 */
 void KEY_Proc(void)
 {
-	if(uwTick < KEY_Timer_Tick + 50) return;
-	KEY_Timer_Tick = uwTick;
+	if(KEY_Timer_Tick > HAL_GetTick()) return; 
+	KEY_Timer_Tick = HAL_GetTick() + 50;
 	
 	KEY_Val = KEY_Scan();
 	KEY_Down = KEY_Val & (KEY_Val ^ KEY_Old);
@@ -287,8 +286,8 @@ void KEY_Proc(void)
 
 void LED_Proc(void)
 {
-	if(uwTick < LED_Timer_Tick + 150) return;
-	LED_Timer_Tick = uwTick;
+	if(LED_Timer_Tick > HAL_GetTick()) return;
+	LED_Timer_Tick = HAL_GetTick() + 150;
 	
 	if(No_Use_Num)
 	{
@@ -304,8 +303,8 @@ void LED_Proc(void)
  
 void LCD_Proc(void)
 {
-	if(uwTick < LCD_Timer_Tick + 100) return;
-	LCD_Timer_Tick = uwTick;
+	if(HAL_GetTick() < LCD_Timer_Tick) return;
+	LCD_Timer_Tick = HAL_GetTick() + 100;
 	
 	if(Menu_State == 0)
 	{
@@ -331,8 +330,8 @@ void LCD_Proc(void)
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-	if(Uart_Rx_Pointer == 0)
-		UART_Timer_Tick = uwTick;
+	// 每进一次中断就复位软件定时器
+	UART_Timer_Tick = HAL_GetTick() + 20;
 	
 	Uart_Rx[Uart_Rx_Pointer] = Uart_Rx_Buffer;
 	Uart_Rx_Pointer++;
@@ -387,7 +386,7 @@ void UART_Proc(void)
 	
 	if(Uart_Rx_Pointer)
 	{
-		if(uwTick < UART_Timer_Tick + 100) return;
+		if(UART_Timer_Tick > HAL_GetTick()) return;
 		if(Uart_Rx_Pointer != 22) goto SEND_ERROR;
 		
 		Data_Temp.sec = Command_Check(Uart_Rx);
@@ -408,7 +407,7 @@ void UART_Proc(void)
 		// 判断是入车库还是出车库 以及找出对应车位
 		for(Postion = 0; Postion < 8; Postion++)
 		{
-			if(NBR_State & (1 << Postion))
+			if(Data[Postion].state)
 			{
 				if(memcmp(Data_Temp.id, Data[Postion].id, 4) == 0)
 				{
@@ -422,7 +421,7 @@ void UART_Proc(void)
 			if(No_Use_Num == 0) goto SEND_ERROR;	
 			for(Postion = 0; Postion < 8; Postion++)
 			{
-				if((NBR_State & (1 << Postion)) == 0)
+				if(Data[Postion].state == 0)
 				{
 					dir = 1; // In-入车库
 					break;
@@ -435,7 +434,7 @@ void UART_Proc(void)
 		{
 			Data[Postion] = Data_Temp;
 			
-			NBR_State |= 1 << Postion;
+			Data[Postion].state = 1;
 			
 			No_Use_Num--;
 			if(Data[Postion].type == 'C')
@@ -450,7 +449,7 @@ void UART_Proc(void)
 
 			dt_hour =  (Data_Temp.sec - Data[Postion].sec) /3600.0f + 1; // 不满一小时按一小时算
 			
-			NBR_State &= ~(1 << Postion);
+			Data[Postion].state = 0;
 			
 			No_Use_Num++;
 			if(Data[Postion].type == 'C')
