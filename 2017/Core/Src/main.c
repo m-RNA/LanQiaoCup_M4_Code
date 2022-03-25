@@ -100,7 +100,8 @@ void Listen_Task(void)
 {
   Task_Delay(0, 1000);
   
-  R37_Vol = ADC_GetVal() * 3.3f / 4096;
+  ADC_Val = ADC_GetVal();
+  R37_Vol = ADC_Val * 3.3f / 4096;
   Liquid_Height = ADC_Val * 100 / 4096;
   
   LCD_Update_Flag = 1;
@@ -139,9 +140,10 @@ void LCD_Task(void)
 {
   if(LCD_Update_Flag)
   {
+    LCD_Update_Flag = 0;
+      
     if(Menu_State == 0)
     {
-      LCD_Update_Flag = 0;
       sprintf((char *)LCD_String_Buffer, "    Liquid Level  ");
       LCD_DisplayStringLine(Line1, LCD_String_Buffer);  
       sprintf((char *)LCD_String_Buffer, "  Height:%3dcm  ", Liquid_Height);
@@ -202,8 +204,9 @@ void KEY_Task(void)
   KEY_Val = KEY_Scan();
   KEY_Down = KEY_Val & (KEY_Val ^ KEY_Old);
   KEY_Old = KEY_Val;
-  
-  LCD_Update_Flag = 1;
+    
+  if(KEY_Down)
+    LCD_Update_Flag = 1;
 
   switch(KEY_Down)
   {
@@ -238,13 +241,6 @@ void KEY_Task(void)
       break;      
   }
 }
-
-
-
-
-
-
-
 
 void LED_Task(void)
 {
@@ -340,7 +336,8 @@ int main(void)
   Liquid_Thershold_Ctrl[2] = Liquid_Thershold_Disp[3];
   
   ADC_Val = ADC_GetVal();
-  Liquid_Height_Old = Liquid_Height = ADC_Val * 100 / 4096;  
+  Liquid_Height = ADC_Val * 100 / 4096;  
+  Liquid_Height_Old = Liquid_Height;
   
   
   
@@ -351,10 +348,10 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    Listen_Task();
     LCD_Task();
     KEY_Task();
     LED_Task();
-    Listen_Task();
 
     /* USER CODE END WHILE */
 
