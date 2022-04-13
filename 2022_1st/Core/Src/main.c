@@ -39,7 +39,7 @@ typedef enum
 {
     Set_1KHz,
     Set_2KHz
-}Set_PWM_f_Type;
+}PWM_f_Type;
 
 typedef enum
 {
@@ -85,9 +85,6 @@ u8 Password_Ctrl[3] = {'1', '2', '3'};
 u8 Password_Right_Error_Flag = 0;
 u8 Password_Error_Times = 0;
 u8 Password_Error_Blink_Times = 0;
-
-u16 Frequecy = 1000;
-u16 Duty = 50;
 
 vu32 i = 0;
 
@@ -228,19 +225,15 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-void Set_PWM_State(Set_PWM_f_Type f)
+void Set_PWM_State(PWM_f_Type f)
 {
     if(f == Set_1KHz)
     {
-        Frequecy = 1000;
-        Duty = 50;
-        __HAL_TIM_SetCompare(&htim2, TIM_CHANNEL_2, 500);
-        __HAL_TIM_SetAutoreload(&htim2, 999);
+        __HAL_TIM_SetCompare(&htim2, TIM_CHANNEL_2, 500); // ※ 先调用这个函数
+        __HAL_TIM_SetAutoreload(&htim2, 999);             // 然后在调用这个函数
     }
     else if(f == Set_2KHz)
     {
-        Frequecy = 2000;
-        Duty = 10;
         __HAL_TIM_SetCompare(&htim2, TIM_CHANNEL_2, 100);
         __HAL_TIM_SetAutoreload(&htim2, 499);
     }
@@ -249,6 +242,7 @@ void Set_PWM_State(Set_PWM_f_Type f)
 void Set_Meau_State(Meau_State_Type State)
 {
     LCD_Clear(Black);    
+    
     if(State == PSD)
     {
         Meau_State = PSD;
@@ -266,6 +260,7 @@ void Set_Meau_State(Meau_State_Type State)
 void LED1_Task(void)
 {
     Task_Delay(0, 100);
+    
     if(Password_Error_Blink_Times)
     {
         Password_Error_Blink_Times--;
@@ -288,6 +283,8 @@ void LED2_Task(void)
         Password_Right_Error_Flag = 0;
         
         Set_PWM_State(Set_1KHz);
+        Set_Meau_State(PSD);
+        
         LED_State &= ~0x01;
         LED_Disp(LED_State);
     }
@@ -340,11 +337,6 @@ void KEY_Task(void)
             break;        
         }   
     }
-    else
-    {
-        if(KEY_Down == 4)
-            Set_Meau_State(PSD);
-    }
 }
 
 void LCD_Task(void)
@@ -368,9 +360,9 @@ void LCD_Task(void)
         snprintf((char *)LCD_String_Buffer, 20, "       STA");
         LCD_DisplayStringLine(Line1, LCD_String_Buffer);
         
-        snprintf((char *)LCD_String_Buffer, 20, "    F:%dHz",Frequecy);
+        snprintf((char *)LCD_String_Buffer, 20, "    F:2000Hz");
         LCD_DisplayStringLine(Line3, LCD_String_Buffer);
-        snprintf((char *)LCD_String_Buffer, 20, "    D:%d%%",Duty);
+        snprintf((char *)LCD_String_Buffer, 20, "    D:10%%");
         LCD_DisplayStringLine(Line4, LCD_String_Buffer);
     }
 }
@@ -393,37 +385,31 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 void UART_Task(void)
 {
-    if(UART_Rx_Index)
+    if(UART_Rx_Index == 0) return;
+    if(SW_Timer_Tick[4] > HAL_GetTick()) return;
+    
+    if(UART_Rx_Index == 7)
     {
-        if(SW_Timer_Tick[4] < HAL_GetTick())
+        if((Password_Ctrl[0] == UART_Rx_Buffer[0]) && (Password_Ctrl[1] == UART_Rx_Buffer[1]) && (Password_Ctrl[2] == UART_Rx_Buffer[2]) 
+            && ('-' == UART_Rx_Buffer[3]))
         {
-            if(UART_Rx_Index == 7)
+            for(i = 0; i < 3; i++)
             {
-                if((Password_Ctrl[0] == UART_Rx_Buffer[0]) && (Password_Ctrl[1] == UART_Rx_Buffer[1]) && (Password_Ctrl[2] == UART_Rx_Buffer[2]) 
-                    && ('-' == UART_Rx_Buffer[3]))
+                if(((UART_Rx_Buffer[4 + i] <= '9') && (UART_Rx_Buffer[4 + i] >= '0')) == 0)
                 {
-                    for(i = 0; i < 3; i++)
-                    {
-                        if(((UART_Rx_Buffer[4 + i] <= '9') && (UART_Rx_Buffer[4 + i] >= '0')) == 0)
-                        {
-                            goto PASS;
-                        }
-                    }
-                    for(i = 0; i < 3; i++)
-                    {
-                        Password_Ctrl[i] = UART_Rx_Buffer[4 + i];
-                    }
+                    goto PASS;
                 }
             }
-            
-            PASS:
-            // ※ UART_Rx_Index 在这里清零才对
-            UART_Rx_Index = 0;
-            memset(UART_Rx_Buffer, 0, 7);
+            for(i = 0; i < 3; i++)
+            {
+                Password_Ctrl[i] = UART_Rx_Buffer[4 + i];
+            }
         }
-        
-        // ※※※※※※※※※          而不是在这里          ※※※※※※※※※
     }
+    
+    PASS:
+    UART_Rx_Index = 0;
+    memset(UART_Rx_Buffer, 0, 7);
 }
 
 /* USER CODE END 4 */
