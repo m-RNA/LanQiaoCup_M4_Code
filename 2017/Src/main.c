@@ -241,13 +241,15 @@ void Elevator_Set_Stop(void)
 
 void KEY_Task(void)
 {
+    if(Elevator_State) return; // 仅在状态0时，按键可用
+    
     Task_Delay(1, 50);
 
     KEY_Val = KEY_Scan();
     KEY_Down = KEY_Val & (KEY_Val ^ KEY_Old);
     KEY_Old = KEY_Val;
     
-    if(KEY_Down && (Elevator_State == 0))
+    if(KEY_Down)
     {
         if(Current_Platform != KEY_Down)
         {
@@ -262,15 +264,12 @@ void KEY_Task(void)
 void LCD_Task(void)
 {
     Task_Delay(2, 250);
+    
     if(LCD_Blink_Times)
     {
         LCD_Blink_Times--;
         LCD_Display_CP_Flag ^= 1;
     }
-    
-    
-    HAL_RTC_GetTime(&hrtc, &xTime, RTC_FORMAT_BIN);
-    HAL_RTC_GetDate(&hrtc, &xDate, RTC_FORMAT_BIN);
     
     if(LCD_Display_CP_Flag)
     {
@@ -282,12 +281,14 @@ void LCD_Task(void)
         LCD_ClearLine(Line5);
     }
 
-    
-    snprintf((char *)LCD_String_Buffer, 20, "          %d   ",Elevator_State);
-    LCD_DisplayStringLine(Line9, LCD_String_Buffer);
+    HAL_RTC_GetTime(&hrtc, &xTime, RTC_FORMAT_BIN);
+    HAL_RTC_GetDate(&hrtc, &xDate, RTC_FORMAT_BIN);    
     
     snprintf((char *)LCD_String_Buffer, 20, "       %02d:%02d:%02d      ", xTime.Hours, xTime.Minutes, xTime.Seconds);
     LCD_DisplayStringLine(Line8, LCD_String_Buffer);
+    
+//    snprintf((char *)LCD_String_Buffer, 20, "          %d   ",Elevator_State);
+//    LCD_DisplayStringLine(Line9, LCD_String_Buffer);
 }
 
 void LOGIC_Task(void)
